@@ -1,0 +1,62 @@
+import psycopg2
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+# Connect to the database
+conn = psycopg2.connect(
+    dbname=os.getenv('DB_NAME'),
+    user=os.getenv('DB_USER'),
+    password=os.getenv('DB_PASSWORD'),
+    host=os.getenv('DB_HOST'),
+    port=os.getenv('DB_PORT')
+)
+
+cursor = conn.cursor()
+
+try:
+    # Execute SQL query to select rows that meet the conditions
+    cursor.execute('''
+        SELECT * FROM forebet
+        WHERE (average_goals = '1.05')
+        OR (average_goals = '1.50' AND coefficient = '1.50')
+    ''')
+
+    # Fetch all rows that meet the conditions
+    rows = cursor.fetchall()
+
+    # Check if any rows were returned
+    if rows:
+        # Initialize email parameters
+        from_email = os.getenv("FROM_EMAIL")
+        from_password = os.getenv("FROM_PASSWORD")
+        to_email = "recipient_email@gmail.com"
+        subject = "Match Condition Met"
+        
+        # Construct email body
+        email_body = ""
+        for row in rows:
+            email_body += f"League: {row[0]}\nHome Team: {row[1]}\nAway Team: {row[2]}\nDate: {row[3]}\nAverage Goals: {row[4]}\nCoefficient: {row[5]}\nFT Score: {row[6]}\nHT Score: {row[7]}\n\n"
+
+        # Send email
+        msg = MIMEMultipart()
+        msg['From'] = from_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(email_body, 'plain'))
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(from_email, from_password)
+        text = msg.as_string()
+        server.sendmail(from_email, to_email, text)
+        server.quit()
+
+except psycopg2.Error as e:
+    print("Error while executing SQL query:", e)
+
+finally:
+    # Close cursor and connection
+    cursor.close()
+    conn.close()
