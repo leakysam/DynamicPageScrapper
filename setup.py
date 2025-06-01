@@ -31,8 +31,8 @@ def send_email(subject, body, to_email):
     server.quit()
 
 # Define the range of dates
-start_date = '2024-03-18'
-end_date = '2024-03-22'  # Example end date, you can adjust as needed
+start_date = '2025-04-25'
+end_date = '2025-04-30'  # Example end date, you can adjust as needed
 
 # Initialize WebDriver
 driver = webdriver.Chrome()
@@ -112,6 +112,7 @@ try:
     # Create table if not exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS forebet (
+            id SERIAL PRIMARY KEY,
             league TEXT,
             home_team TEXT,
             away_team TEXT,
@@ -119,19 +120,38 @@ try:
             average_goals TEXT,
             coefficient TEXT,
             ft_score TEXT,
-            ht_score TEXT
+            ht_score TEXT,
+            CONSTRAINT unique_match UNIQUE (league, home_team, away_team, date)
         )
     ''')
 
     # Insert data into the table
     for index, row in df.iterrows():
+    # Extract and sanitize data from the row
+        avg_goals = row['Avg Goals']
+        coefficient = row['Coefficient']
+        ft_score = row['FT Score']
+        ht_score = row['HT Score']
+        
+        # Normalize values: Treat '-' or empty strings as None
+        avg_goals = None if pd.isnull(avg_goals) or avg_goals.strip() == '-' else avg_goals
+        coefficient = None if pd.isnull(coefficient) or coefficient.strip() == '-' else coefficient
+        ft_score = None if pd.isnull(ft_score) or ft_score.strip() == '' or ft_score == '-' else ft_score
+        ht_score = None if pd.isnull(ht_score) or ht_score.strip() == '' or ht_score == '-' else ht_score
+
+        # Skip rows where any critical field (avg_goals, coefficient, ft_score) is null
+        if pd.isnull(avg_goals) or pd.isnull(coefficient) or ft_score is None:
+            continue  # Do not insert this row
+
+        # Insert the row into the database
         cursor.execute('''
             INSERT INTO forebet (league, home_team, away_team, date, average_goals, coefficient, ft_score, ht_score)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ''', (row['League'], row['Home Team'], row['Away Team'], row['Date'], row['Avg Goals'], row['Coefficient'], row['FT Score'], row['HT Score']))
+            ON CONFLICT (league, home_team, away_team, date)
+            DO NOTHING;
+        ''', (row['League'], row['Home Team'], row['Away Team'], row['Date'], avg_goals, coefficient, ft_score, ht_score))
 
     conn.commit()
-
     # After database insertion, check and send email
     # After database insertion, check and send email
     for index, row in df.iterrows():
